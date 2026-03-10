@@ -1,0 +1,22 @@
+{
+    "adapters": {
+        "LLDB": {
+            "extends": "CodeLLDB",
+            "attach": {
+                "pidProperty": "processId",
+                "pidSelect": "ask"
+            }
+        }
+    },
+    "configurations": {
+        "vietoris_rips": {
+            "adapter": "CodeLLDB",
+            "default": true,
+            "configuration": {
+                "request": "launch",
+                "program": "${workspaceRoot}/build/vietoris_rips",
+                "pid": "${PickProcess(\"vietoris_rips\")}"
+            }
+        }
+    }
+}
