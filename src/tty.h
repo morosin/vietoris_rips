@@ -10,8 +10,7 @@
 #include <string_view>
 
 namespace tty {
-
-    using namespace std::string_view_literals;
+using namespace std::string_view_literals;
 
 static constexpr auto ESC = "\033"sv;
 
@@ -82,7 +81,7 @@ template <class... A> struct text: public element<text<A...>> {
     using el_t = element<text<A...>>;
 
     constexpr text() = default;
-    constexpr text(A&&... a): element<text<A...>>{ std::forward<A>(a)... } { }
+    constexpr text(A... a): element<text<A...>>{ std::move(a)... } { }
 
     constexpr void format(this const text& a, std::format_context& ctx) {
         auto format_escape = [&ctx, first = true]<class ...T>(std::format_string<T...> fmt, T&& ...args) mutable {
@@ -158,6 +157,7 @@ template <class... A> struct text: public element<text<A...>> {
         if constexpr (text::count_aspects() >= 1) { ctx.advance_to(std::format_to(ctx.out(), "{}[0m", ESC)); }
     }
 };
+
 
 inline constexpr aspect_generator<^^int, "up"> $up;
 inline constexpr aspect_generator<^^int, "down"> $down;

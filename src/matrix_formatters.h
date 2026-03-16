@@ -97,13 +97,23 @@ struct std::formatter<R> {
     constexpr auto format(const R& range, std::format_context& ctx) const {
         using namespace tty;
 
+        std::formatter<matrix_type> f;
+
         std::optional<int> prev_rows{};
+        int total_space{};
         for (auto it = std::ranges::begin(range); it != std::ranges::end(range); ++it) {
             const auto& m = *it;
             if (prev_rows && *prev_rows > 1) {
-                ctx.advance_to(std::format_to(ctx.out(), ",{}", cursor{ $up = *prev_rows - 1 }));
+                if (total_space >= 110) {
+                    ctx.advance_to(std::format_to(ctx.out(), ",\f\f{}", cursor{ $back = total_space - 5 }));
+                    prev_rows.reset();
+                    total_space = 4;
+                } else {
+                    ctx.advance_to(std::format_to(ctx.out(), ",{}", cursor{ $up = *prev_rows - 1 }));
+                }
             }
-            ctx.advance_to(std::format_to(ctx.out(), "{}", m));
+            ctx.advance_to(f.format(m, ctx));
+            total_space += f.total_inner_width(m) + 5;
             prev_rows = m.rows();
         }
         return ctx.out();
@@ -111,27 +121,32 @@ struct std::formatter<R> {
 };
 
 template <simplicial_complex Cplx> struct std::formatter<Cplx> {
+    static constexpr auto max_complex_length = 24;
+
     constexpr auto parse(std::format_parse_context& ctx) { return ctx.begin(); }
 
     static consteval std::string_view complex_name() {
         return std::define_static_string(std::meta::display_string_of(^^Cplx));
     }
 
-    template <int N> constexpr auto format_chains_and_boundary(Cplx& cplx, std::format_context& ctx) const {
+    constexpr auto format_chains_and_boundary(Cplx& cplx, int degree, std::format_context& ctx) const {
         using namespace tty;
 
-        auto& chains = cplx.template skeleton<N>();
+        chain_group<>& chains = cplx.skeleton(degree);
+        if (degree > 0) {
+            auto bdy = chains.boundary().toDense();
+            int rows = bdy.rows();
 
-        if constexpr (N > 0) {
-            const auto& bdy = chains.boundary();
-            int rows = (chains.rank() > 0) ? bdy.rows() : 2;
             ctx.advance_to(std::format_to(ctx.out(), "{}🭯\f", cursor{ $forward = 2 }));
             for (int i = 0; i <= rows; ++i) {
                 ctx.advance_to(std::format_to(ctx.out(), "{}│\f", cursor{ $back = 1 }));
             }
+            ctx.advance_to(std::format_to(ctx.out(),
+                                          "{}{}",
+                                          cursor{ $up = rows + 1, $forward = 2 },
+                                          text{ $fg = cyan, "∂_"sv, degree }));
             ctx.advance_to(std::format_to(
-                ctx.out(), "{}{}", cursor{ $up = rows + 1, $forward = 2 }, text{ $fg = cyan, "∂_"sv, N }));
-            if (chains.rank() > 0) { ctx.advance_to(std::format_to(ctx.out(), ": {}\n\n", bdy)); }
+                ctx.out(), ": {} h_{}={}\n\n", bdy, degree, text{ $fg = green, betti_number(cplx, degree) }));
         } else {
             ctx.advance_to(
                 std::format_to(ctx.out(), "  {}\f{}🭯\f", text{ $fg = green, "0"sv }, cursor{ $back = 1 }));
@@ -140,19 +155,21 @@ template <simplicial_complex Cplx> struct std::formatter<Cplx> {
                                           cursor{ $back = 1 },
                                           text{ $fg = cyan, "∂_0"sv },
                                           cursor{ $back = 5 }));
-            ctx.advance_to(std::format_to(ctx.out(), "{}│\n", cursor{ $back = 1 }));
+            ctx.advance_to(std::format_to(
+                ctx.out(), "{}│  h_0={}\n", cursor{ $back = 1 }, text{ $fg = green, betti_number(cplx, 0) }));
         }
 
         if (chains.rank() > 0) {
             ctx.advance_to(std::format_to(
-                ctx.out(), "ℤ^{}, {}-simplices", text{ +$bold, $fg = green, (int)chains.rank() }, N));
+                ctx.out(), "ℤ^{}, {}-simplices", text{ +$bold, $fg = green, (int)chains.rank() }, degree));
             ctx.advance_to(std::format_to(
                 ctx.out(), ": {}\n", chains.generators() | std::views::transform([](const auto& splx) {
                                          return splx.points().matrix();
                                      })));
-            if constexpr (N < 11) { format_chains_and_boundary<N + 1>(cplx, ctx); }
+            return true;
         } else {
-            ctx.advance_to(std::format_to(ctx.out(), "\n\n  {}\n", text{ $fg = green, "0"sv }));
+            ctx.advance_to(std::format_to(ctx.out(), "  {}\n", text{ $fg = green, "0"sv }));
+            return false;
         }
     }
 
@@ -167,7 +184,12 @@ template <simplicial_complex Cplx> struct std::formatter<Cplx> {
                                             text{ $fg = cyan, cplx.epsilon() },
                                             ")"sv },
                                       cplx.points().matrix()));
-        format_chains_and_boundary<0>(cplx, ctx);
+        for (int n = 0; n < max_complex_length; ++n) {
+            if (!format_chains_and_boundary(cplx, n, ctx)) { return ctx.out(); }
+        }
+
+        ctx.advance_to(std::format_to(ctx.out(), "...\n"));
+
         return ctx.out();
     }
 };

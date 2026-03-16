@@ -1,29 +1,74 @@
 #ifndef FLAG_COMPLEX_H
 #define FLAG_COMPLEX_H
 
+#include "Eigen/Core"
 #include "simplicial_complex.h"
+#include <print>
+
+template <std::integral T> constexpr T binomial_coefficient(T n, T k) {
+    return std::tgamma(n + 1) / (std::tgamma(k + 1) * std::tgamma(n-k + 1));
+}
 
 template <simplicial_complex Cplx> struct flag_complex: Cplx {
     using base_complex = Cplx;
-    using matric_space_type = Cplx::metric_space_type;
+    using metric_space_type = Cplx::metric_space_type;
     using point_type = Cplx::point_type;
     using scalar_type = Cplx::scalar_type;
-    static constexpr auto space_dimension = Cplx::space_dimension;
 
-    using base_complex::base_complex;
+private:
+    Eigen::MatrixX<int> _adjacency;
 
-    constexpr auto epsilon() const { return base_complex::epsilon() / 2; };
+public:
+    // applies the flag construction to a given simplicial complex
+    template <class... Args> constexpr flag_complex(Args&&... args)
+        : base_complex{ std::forward<Args>(args)... } {
+        
+        _adjacency.setZero(this->n_points(), this->n_points());
 
-    template <index_list I> constexpr bool contains_simplex(this auto& self, const I& indices) {
-        if (indices.size() > self.n_points()) { return false; }
-        for (std::size_t j = 0; j < indices.size(); ++j) {
-            for (std::size_t i = 0; i < j; ++i) {
-                if (!static_cast<base_complex&>(self).contains_simplex({ indices[i], indices[j] })) {
-                    return false;
+        chain_group<>& edges = static_cast<base_complex&>(*this).skeleton(1); 
+
+        for (const simplex<>& edge : edges.generators()) {
+            _adjacency(edge[0], edge[1]) = 1;
+            // _adjacency(edge[1], edge[0]) = 1;
+        }
+    }
+
+    constexpr flag_complex(const flag_complex&) = delete;
+    constexpr flag_complex(flag_complex&&) = default;
+
+    constexpr chain_group<> compute_skeleton(int n) {
+        // for n=0 and n=1, we need the chain group from the underlying complex.
+        if (n <= 1) { 
+            return static_cast<base_complex&>(*this).compute_skeleton(n);
+        }
+     
+        const auto& edges = this->skeleton(n-1);
+        std::vector<simplex<>> faces{ };
+        int added_faces{ };
+ 
+        for (const simplex<>& edge : edges.generators()) {
+            Eigen::VectorXi point_indices = Eigen::VectorXi::Zero(this->n_points());
+            point_indices(edge.points()).setConstant(1);
+
+            for (int i = edge.points()[n-1] + 1; i < this->n_points(); ++i) {
+
+                // a vector with a 1 in each position for which the hypotheical face would contain that point, and zeros elsewhere.
+                point_indices(i) = 1;
+               
+                // the `k`th component of the `connect` vector is equal to the number 1-simplices based at point k that lie in the hypothetical face.
+                Eigen::ArrayXi connect = _adjacency * point_indices; 
+                // if we have the correct number of 1-simplices to form an `n`-simplex (i.e. n+1 choose 2) then we're done
+                if (connect.sum() >= binomial_coefficient(n + 1, 2)) {
+                    auto [matched_edges, p, e] = this->make_simplex_arrays(n, edge, i);
+                    if (matched_edges == n + 1) { // should always be true for a flag complex
+                        faces.emplace_back(simplex<>{ added_faces++, e, p });
+                    }
                 }
+                point_indices(i) = 0;
             }
         }
-        return true;
+
+        return chain_group<>{ static_cast<int>(edges.rank()), std::move(faces) };    
     }
 };
 

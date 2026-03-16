@@ -1,105 +1,68 @@
 #ifndef CECH_COMPLEX_H
 #define CECH_COMPLEX_H
 
+#include "Eigen/Core"
 #include "simplicial_complex.h"
-#include <memory_resource>
+#include "matrix_formatters.h"
 #include <print>
 #include <ranges>
 
-template <class Space> struct cech_complex;
+template <metric_space Space> struct cech_complex: point_cloud_complex<Space> {
+    using metric_space_type = point_cloud_complex<Space>::metric_space_type;
+    using point_type = point_cloud_complex<Space>::point_type;
+    using scalar_type = point_cloud_complex<Space>::scalar_type;
 
-template <class Scalar, std::size_t Dim> struct cech_complex<euclidean_space<Scalar, Dim>> {
-    using metric_space_type = euclidean_space<Scalar, Dim>;
-    using point_type = metric_space_type::vector_type;
-    using scalar_type = Scalar;
-    static constexpr auto space_dimension = Dim;
-
-private:
-    using storage_type = Eigen::Array<Scalar, Eigen::Dynamic, Dim>; // each point is a row vector
-    storage_type _points;
-    scalar_type _epsilon;
-
-    std::pmr::monotonic_buffer_resource memory_pool;
-    std::pmr::polymorphic_allocator<> chain_allocator{ &memory_pool };
-    std::vector<void*> skeleta;
-
-public:
-    template <class R> constexpr cech_complex(R&& points, scalar_type epsilon)
-        : _points{ std::forward<R>(points) }, _epsilon{ epsilon } { }
-
+    template <class R> constexpr cech_complex(R&& points, scalar_type epsilon): point_cloud_complex<Space>{ std::forward<R>(points), epsilon } { }
+    
     constexpr cech_complex(const cech_complex&) = delete;
     constexpr cech_complex(cech_complex&&) = default;
+ 
+    constexpr auto compute_skeleton(int n) {
+            if (n == 0) {
+                // the 0-chains are just points
+                return chain_group<>{ 0,  std::views::iota(0, (int) this->n_points()) | std::views::transform([&](int i){
+                    return simplex<>(i, std::array{ i }, std::array{ i });
+                }) }; 
+            }
 
-    constexpr auto n_points() const { return _points.rows(); }
+        // here, an edge refers to an `n-1`-chain from which we form faces (`n`-chains)
+        const chain_group<>& edges = this->skeleton(n-1);
+        std::vector<simplex<>> faces{ };
+        int added_faces{ };
 
-    constexpr auto& points() const { return _points; }
+        for (int edge_index = 0; edge_index < edges.rank(); ++edge_index) {
+            auto& edge = edges.generators()[edge_index];
+            auto vertices = this->points_of(edge);
+            // std::println("edge {} matched to vertices {}", edge_index, vertices.matrix());
 
-    constexpr auto epsilon() const { return _epsilon; }
+            // the points in `edge` should be ordered, so we can begin searching for new points with which to form a face after
+            // all the already-included points. this should save time while also enforcing ordering.
+            for (int j = edge.points().matrix().maxCoeff(); j < this->n_points(); ++j) {
+                // std::println("checking for intersection with {}", j);
+                Eigen::Array<int, Eigen::Dynamic, 1> p(n + 1);
+                p(Eigen::seq(0, n - 1)) = edge.points();
+                p(n) = j;
 
-    constexpr auto epsilon_squared(this auto& self) { return self.epsilon() * self.epsilon(); }
+                // calculate the distance from each point to the centroid of the hypothetical face. the centroid should have minimal 
+                // distance to each of the points, and would have to be in the `n`-fold intersection of balls centered at these points
+                // if such an intersection is nonempty.
+                auto coords = this->_points(p, Eigen::placeholders::all);
+                auto centroid = coords.colwise().mean();
+                auto dist = (coords.rowwise() - centroid).eval();
 
-    template <int N> constexpr decltype(auto) points_of(this auto& self, const simplex<N>& splx) {
-        return self._points(splx.points(), Eigen::placeholders::all);
-    }
-
-    template <int N> constexpr auto& skeleton(this auto& self) {
-        if (self.skeleta.size() <= N) {
-            if constexpr (N == 0) {
-                self.skeleta.push_back(self.chain_allocator.template new_object<chain_group<0>>(
-                    self.n_points(),
-                    std::views::iota(0, (int)self.n_points()) | std::views::transform([](int i) {
-                        return simplex<0>{ i, std::array{ i }, std::array{ i } };
-                    })));
-            } else {
-                auto& edges = self.template skeleton<N - 1>();
-                std::vector<simplex<N>> faces;
-
-                int added_faces{};
-
-                for (int edge_index = 0; edge_index < edges.rank(); ++edge_index) {
-                    auto& edge = edges.generators()[edge_index];
-                    auto vertices = self.points_of(edge);
-                    // std::println("edge {} matched to vertices {}", edge_index, vertices.matrix());
-
-                    for (int j = 0; j < self.n_points(); ++j) {
-                        if ((edge.points() >= j).any()) { continue; }
-                        // std::println("checking for intersection with {}", j);
-                        auto centroid = vertices.colwise().mean();
-                        Eigen::Array<int, N + 1, 1> p;
-                        p(Eigen::seq(0, N - 1)) = edge.points();
-                        p(N) = j;
-
-                        // Eigen::Matrix<Scalar, N + 1, Dim> coords{ };
-                        auto coords = self._points(p, Eigen::placeholders::all);
-
-                        auto dist = coords.rowwise() - centroid;
-                        // std::println("dist: {}", (dist.rowwise().squaredNorm() - (self.epsilon_squared()
-                        // / 4.0)).matrix());
-                        if ((dist.rowwise().squaredNorm() <= (self.epsilon_squared() / 4.0)).all()) {
-                            Eigen::Array<int, N + 1, 1> e;
-                            auto edges_range = e(Eigen::seq(0, N));
-                            auto [_, result] = std::ranges::copy(
-                                edges.generators() | std::views::filter([&p](const auto& gen) {
-                                    return std::ranges::includes(p(Eigen::seq(0, N)),
-                                                                 gen.points()(Eigen::seq(0, N - 1)));
-                                }) | std::views::transform([](const auto& gen) {
-                                    return gen.index();
-                                }),
-                                edges_range.begin());
-                            if (std::distance(edges_range.begin(), result) == N + 1) {
-                                faces.emplace_back(added_faces++, e, p);
-                                // std::println("completed face {} with points {}", e.matrix(), p.matrix());
-                            }
-                        }
+                if ((dist.rowwise().squaredNorm() <= this->epsilon_squared()).all()) {
+                    auto [matched_edges, _, e] = this->make_simplex_arrays(n, edge, j);
+                    if (matched_edges == n + 1) {
+                        faces.emplace_back(simplex<>{ added_faces++, e, p });
+                        // std::println("completed face {} with points {}", e.matrix(), p.matrix());
                     }
                 }
-                self.skeleta.push_back(
-                    self.chain_allocator.template new_object<chain_group<N>>(edges.rank(), std::move(faces)));
             }
         }
-
-        return *static_cast<chain_group<N>*>(self.skeleta[N]);
+        return chain_group<>{ (int) edges.rank(), std::move(faces) };
+        // skeleta.emplace_back(chain_group<>{ (int) edges.rank(), faces });
     }
+
 };
 
 static_assert(simplicial_complex<cech_complex<RR2>>);
