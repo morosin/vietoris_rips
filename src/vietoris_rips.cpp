@@ -1,4 +1,5 @@
 #include "vr_complex.h"
+#include "alpha_shape_complex.h"
 #include "matrix_formatters.h"
 #include <cmath>
 #include <chrono>
@@ -29,19 +30,39 @@ int main(int argc, char* argv[]) {
     
     auto start = std::chrono::steady_clock::now(); 
     cech_complex<RR2> cplx{ points, epsilon };
-    cplx.skeleton(10);
+    volatile int x{ };
+
+    for (int i = 1; i < points.rows(); ++i) {
+        cplx.skeleton(i); // precompute these so we can time it
+        x += betti_number(cplx, i - 1);
+    }
     auto end = std::chrono::steady_clock::now();
 
     std::println("{}\n", cplx);
     std::println("(finished in {})", text{ $fg = blue, std::chrono::duration_cast<std::chrono::microseconds>(end - start) });
     
-    start = std::chrono::steady_clock::now(); 
+    start = std::chrono::steady_clock::now();
     vietoris_rips_complex<RR2> vr_cplx{ points, epsilon / 2.0 };
-    vr_cplx.skeleton(10);
+    for (int i = 1; i < points.rows(); ++i) {
+        vr_cplx.skeleton(i);
+        x += betti_number(vr_cplx, i - 1);
+    }
     end = std::chrono::steady_clock::now();
     
     std::println("{}\n", vr_cplx);
     std::println("(finished in {})", text{ $fg = blue, std::chrono::duration_cast<std::chrono::microseconds>(end - start) });
+
+    start = std::chrono::steady_clock::now();
+    alpha_shape_complex<RR2> a_cplx{ points, epsilon };
+    for (int i = 1; i < points.rows(); ++i) {
+        a_cplx.skeleton(i);
+        x += betti_number(a_cplx, i - 1);
+    }
+    end = std::chrono::steady_clock::now();
+    
+    std::println("{}\n", a_cplx);
+    std::println("(finished in {})", text{ $fg = blue, std::chrono::duration_cast<std::chrono::microseconds>(end - start) });
+
 
 }
 
