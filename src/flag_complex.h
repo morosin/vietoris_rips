@@ -17,11 +17,12 @@ template <simplicial_complex Cplx> struct flag_complex: Cplx {
 
 private:
     Eigen::MatrixX<int> _adjacency;
+    scalar_type _base_scale_factor;
 
 public:
     // applies the flag construction to a given simplicial complex
-    template <class... Args> constexpr flag_complex(Args&&... args)
-        : base_complex{ std::forward<Args>(args)... } {
+    template <class... Args> constexpr flag_complex(scalar_type base_scale_factor, Args&&... args)
+        : _base_scale_factor{ base_scale_factor }, base_complex{ std::forward<Args>(args)... } {
 
         _adjacency.setZero(this->n_points(), this->n_points());
 
@@ -36,7 +37,7 @@ public:
     constexpr auto& adjacency_matrix() const { return _adjacency; }
 
     constexpr auto scale(this auto& self, scalar_type epsilon) {
-        static_cast<base_complex&>(self).scale(epsilon);
+        static_cast<base_complex&>(self).scale(epsilon / self._base_scale_factor);
         self._adjacency.setZero(self.n_points(), self.n_points());
         chain_group<>& edges = static_cast<base_complex&>(self).skeleton(1);
 

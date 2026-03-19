@@ -86,9 +86,21 @@ public:
 
     template <std::size_t I> constexpr auto& get(this auto& self) { return std::get<I>(self._bc); }
 
-    constexpr scale_type min_epsilon() const { return std::get<0>(_bc).min_epsilon(); }
+    constexpr scale_type min_epsilon() const {
+        return std::apply(
+            [](const Cplxs&... cplxs) {
+                return std::min({ cplxs.min_epsilon()... });
+            },
+            _bc);
+    }
 
-    constexpr scale_type max_epsilon() const { return std::get<0>(_bc).max_epsilon(); }
+    constexpr scale_type max_epsilon() const {
+        return std::apply(
+            [](const Cplxs&... cplxs) {
+                return std::max({ cplxs.max_epsilon()... });
+            },
+            _bc);
+    }
 };
 
 template <simplicial_complex... Cplxs> struct std::formatter<simultaneous_barcode<Cplxs...>> {
@@ -130,10 +142,11 @@ template <simplicial_complex... Cplxs> struct std::formatter<simultaneous_barcod
         using namespace tty;
 
         const auto& pts = splx.points().matrix();
-        const auto max_epsilon_col = label_column_width + epsilon_to_cols(sb, sb.max_epsilon());
         ctx.advance_to(
             std::format_to(ctx.out(), "{}{} ", pts, cursor{ $up = static_cast<int>(pts.rows()) - 1 }));
         template for (constexpr int I : std::make_index_sequence<sizeof...(Cplxs)>{}) {
+            const auto max_epsilon_col = label_column_width
+                                         + epsilon_to_cols(sb, sb.template get<I>().max_epsilon());
             auto [rb, re] = sb.template get<I>().lifetimes().equal_range(splx);
             int color = static_cast<int>(I + 1);
             for (const auto& [_, lt] : std::ranges::subrange(rb, re)) {

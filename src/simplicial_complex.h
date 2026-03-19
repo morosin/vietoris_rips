@@ -213,7 +213,7 @@ public:
         self.skeleta.clear();
     }
 
-    constexpr auto epsilon_squared(this auto& self) { return self.epsilon() * self.epsilon(); }
+    constexpr auto epsilon_squared() const { return epsilon() * epsilon(); }
 
     template <int N> constexpr decltype(auto) points_of(this auto& self, const simplex<N> splx) {
         return self._points(splx.points(), Eigen::placeholders::all);

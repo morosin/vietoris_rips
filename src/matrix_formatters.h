@@ -146,8 +146,11 @@ template <simplicial_complex Cplx> struct std::formatter<Cplx> {
                                           "{}{}",
                                           cursor{ $up = rows + 1, $forward = 2 },
                                           text{ $fg = cyan, "∂_"sv, degree }));
-            ctx.advance_to(std::format_to(
-                ctx.out(), ": {} h_{}={}\n\n", bdy, degree, text{ $fg = green, betti_number(cplx, degree) }));
+            ctx.advance_to(std::format_to(ctx.out(),
+                                          ": {} {}={}\n\n",
+                                          bdy,
+                                          text{ $fg = cyan, "h_"sv, degree },
+                                          text{ $fg = green, betti_number(cplx, degree) }));
         } else {
             ctx.advance_to(
                 std::format_to(ctx.out(), "  {}\f{}🭯\f", text{ $fg = green, "0"sv }, cursor{ $back = 1 }));
@@ -156,8 +159,11 @@ template <simplicial_complex Cplx> struct std::formatter<Cplx> {
                                           cursor{ $back = 1 },
                                           text{ $fg = cyan, "∂_0"sv },
                                           cursor{ $back = 5 }));
-            ctx.advance_to(std::format_to(
-                ctx.out(), "{}│  h_0={}\n", cursor{ $back = 1 }, text{ $fg = green, betti_number(cplx, 0) }));
+            ctx.advance_to(std::format_to(ctx.out(),
+                                          "{}│  {}={}\n",
+                                          cursor{ $back = 1 },
+                                          text{ $fg = cyan, "h_0"sv },
+                                          text{ $fg = green, betti_number(cplx, 0) }));
         }
 
         if (chains.rank() > 0) {
@@ -185,10 +191,7 @@ template <simplicial_complex Cplx> struct std::formatter<Cplx> {
                                             text{ $fg = cyan, cplx.epsilon() },
                                             ")"sv }));
         plot_points(1.2, 1.2, cplx.points());
-        ctx.advance_to(std::format_to(ctx.out(),
-                                      "{}{}\n",
-                                      cursor{ $forward = 66, $up = static_cast<int>(cplx.n_points()) },
-                                      cplx.points().matrix()));
+
         for (int n = 0; n < max_complex_length; ++n) {
             if (!format_chains_and_boundary(cplx, n, ctx)) { return ctx.out(); }
         }
