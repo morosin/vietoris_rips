@@ -8,5 +8,5 @@ In order to display the output correctly, this project prints ANSI escape codes 
 
 Example
 =======
-See [here](./demo.html) for an example output.
+See [here](./demo.pdf) for an example output.
 
