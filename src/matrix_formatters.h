@@ -2,6 +2,7 @@
 #define MATRIX_FORMATTERS_H
 
 #include "Eigen/Core"
+#include "plotter.h"
 #include "simplicial_complex.h"
 #include "tty.h"
 #include <format>
@@ -177,12 +178,16 @@ template <simplicial_complex Cplx> struct std::formatter<Cplx> {
         using namespace tty;
 
         ctx.advance_to(std::format_to(ctx.out(),
-                                      "{} on {}\n",
+                                      "{}\n",
                                       text{ $underline = underline_kind::SINGLE,
                                             text{ $fg = yellow, complex_name() },
                                             " (𝜀="sv,
                                             text{ $fg = cyan, cplx.epsilon() },
-                                            ")"sv },
+                                            ")"sv }));
+        plot_points(1.2, 1.2, cplx.points());
+        ctx.advance_to(std::format_to(ctx.out(),
+                                      "{}{}\n",
+                                      cursor{ $forward = 66, $up = static_cast<int>(cplx.n_points()) },
                                       cplx.points().matrix()));
         for (int n = 0; n < max_complex_length; ++n) {
             if (!format_chains_and_boundary(cplx, n, ctx)) { return ctx.out(); }

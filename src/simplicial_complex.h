@@ -4,6 +4,7 @@
 #include "Eigen/Core"
 #include "Eigen/LU"
 #include "Eigen/Sparse"
+#include <algorithm>
 #include <concepts>
 #include <meta>
 #include <ranges>
@@ -11,7 +12,9 @@
 template <class S> concept metric_space = requires(S s) {
     typename S::vector_type;
     typename S::scalar_type;
-    { (std::declval<typename S::vector_type>() - std::declval<typename S::vector_type>()).norm() } -> std::convertible_to<typename S::scalar_type>;
+    {
+        (std::declval<typename S::vector_type>() - std::declval<typename S::vector_type>()).norm()
+    } -> std::convertible_to<typename S::scalar_type>;
     { S::dimension() } -> std::integral;
 };
 
@@ -64,6 +67,11 @@ public:
 
     // the index of this simplex in its chain group
     constexpr auto index() const { return _index; }
+
+    constexpr std::strong_ordering operator<=>(const simplex<>& rhs) const {
+        return std::lexicographical_compare_three_way(
+            this->points().begin(), this->points().end(), rhs.points().begin(), rhs.points().end());
+    }
 };
 
 template <int Deg = Eigen::Dynamic> struct chain_group {
@@ -75,12 +83,12 @@ private:
     std::optional<Eigen::SparseMatrix<int>> _bdy_kernel;
     std::optional<Eigen::SparseMatrix<int>> _bdy_image;
 
-    // to find the homology, we want to cache the decomposition of the boundary matrix. we theoretically don't need to save the
-    // whole matrices, but it's kind of fun to see the kernel if you want.
+    // to find the homology, we want to cache the decomposition of the boundary matrix. we theoretically don't
+    // need to save the whole matrices, but it's kind of fun to see the kernel if you want.
     constexpr void check_boundary_computations() {
         if (!_bdy_kernel.has_value()) {
-            // the sparse solvers don't reliably calculate rank for integer matrices and don't reveal the image or null space
-            // so we temporarily convert them to dense matrices
+            // the sparse solvers don't reliably calculate rank for integer matrices and don't reveal the
+            // image or null space so we temporarily convert them to dense matrices
             const auto& bdy = _boundary.toDense();
             Eigen::FullPivLU<Eigen::MatrixXi> solver;
             solver.compute(bdy);
@@ -96,7 +104,8 @@ public:
     constexpr chain_group(chain_group&&) = default;
 
     template <std::ranges::range R> constexpr chain_group(int edge_rank, R&& gens)
-        : _generators{ std::from_range, gens }, _boundary(std::max(edge_rank, 1), std::max(_generators.size(), 1ul)) {
+        : _generators{ std::from_range, gens },
+          _boundary(std::max(edge_rank, 1), std::max(_generators.size(), 1ul)) {
         if (edge_rank > 0 && _generators.size() > 0) {
 
             // form the boundary map
@@ -158,6 +167,7 @@ template <class T> concept simplicial_complex = requires(T& cplx, simplex<> s, i
     { cplx.skeleton(n) } -> std::convertible_to<chain_group<>&>;
     { cplx.points_of(s) } -> std::convertible_to<Eigen::MatrixX<typename T::scalar_type>>;
     { cplx.epsilon() } -> std::convertible_to<typename T::scalar_type>;
+    { cplx.scale(std::declval<typename T::scalar_type>()) };
 };
 
 template <class T> concept nerve_complex = simplicial_complex<T> and requires(T cplx, Eigen::ArrayXi pts) {
@@ -167,11 +177,9 @@ template <class T> concept nerve_complex = simplicial_complex<T> and requires(T 
 template <simplicial_complex Cplx> constexpr int betti_number(Cplx& cplx, int n) {
     chain_group<>& n_plus_one_chains = cplx.skeleton(n + 1);
 
-    if (n == 0) {
-        return cplx.n_points() - n_plus_one_chains.boundary_rank();
-    }
+    if (n == 0) { return cplx.n_points() - n_plus_one_chains.boundary_rank(); }
     chain_group<>& n_chains = cplx.skeleton(n);
-    
+
     return n_chains.boundary_kernel().cols() - n_plus_one_chains.boundary_image().cols();
 }
 
@@ -183,26 +191,21 @@ protected:
     using storage_type = Eigen::Array<scalar_type, Eigen::Dynamic, Space::dimension()>;
     storage_type _points;
     scalar_type _epsilon;
-    std::vector<std::unique_ptr<chain_group<>>> skeleta{ };
+    std::vector<std::unique_ptr<chain_group<>>> skeleta{};
 
-    template <class R> constexpr point_cloud_complex(R&& points, scalar_type epsilon): _points{ std::forward<R>(points) }, _epsilon{ epsilon } { }
- 
+    template <class R> constexpr point_cloud_complex(R&& points, scalar_type epsilon)
+        : _points{ std::forward<R>(points) }, _epsilon{ epsilon } { }
+
 public:
     // complexes shouldn't be copyable because their managed `skeleta` are allocated dynamically.
     constexpr point_cloud_complex(const point_cloud_complex&) = delete;
     constexpr point_cloud_complex(point_cloud_complex&&) = default;
-    
-    constexpr auto n_points() const {
-        return _points.rows();
-    }
 
-    constexpr auto& points() const {
-        return _points;
-    }
+    constexpr auto n_points() const { return _points.rows(); }
 
-    constexpr auto epsilon() const {
-        return _epsilon;
-    }
+    constexpr auto& points() const { return _points; }
+
+    constexpr auto epsilon() const { return _epsilon; }
 
     constexpr void scale(this auto& self, scalar_type epsilon) {
         self._epsilon = epsilon;
@@ -210,73 +213,73 @@ public:
         self.skeleta.clear();
     }
 
-    constexpr auto epsilon_squared(this auto& self) {
-        return self.epsilon() * self.epsilon();
-    } 
+    constexpr auto epsilon_squared(this auto& self) { return self.epsilon() * self.epsilon(); }
 
     template <int N> constexpr decltype(auto) points_of(this auto& self, const simplex<N> splx) {
         return self._points(splx.points(), Eigen::placeholders::all);
     }
 
-    // constructs a new simplex from the points of an initial edge and one additional point. 
+    // constructs a new simplex from the points of an initial edge and one additional point.
     // currently searches though the `degree-1`-skeleton, which to me feels unnecessary but otherwise i'm
-    // not sure how to determine the indices of the new simplex's constituent edges (since we just know their points).
-    // assume that `degree >= 1`, the points of initial_edge are in order, and that `point` is strictly greater than all of them.
-    constexpr auto make_simplex_arrays(this auto& self, int degree, const simplex<>& initial_edge, int point) {
+    // not sure how to determine the indices of the new simplex's constituent edges (since we just know their
+    // points). assume that `degree >= 1`, the points of initial_edge are in order, and that `point` is
+    // strictly greater than all of them.
+    constexpr auto make_simplex_arrays(this auto& self, int degree, const simplex<>& initial_edge,
+                                       int point) {
         const auto& edges = self.skeleton(degree - 1);
-        
+
         Eigen::ArrayXi p(degree + 1);
         Eigen::ArrayXi e(degree + 1);
         p(Eigen::seq(0, degree - 1)) = initial_edge.points();
         p(degree) = point;
         auto edges_range = e(Eigen::seq(0, degree));
-        auto [_, result] = std::ranges::copy(
-            edges.generators() | std::views::filter([&](const auto& gen) {
-                return std::ranges::includes(p(Eigen::seq(0, degree)),
-                                             gen.points()(Eigen::seq(0, degree - 1)));
-            }) | std::views::transform([](const auto& gen) {
-                return gen.index();
-            }),
-            edges_range.begin());
+        auto [_, result] = std::ranges::copy(edges.generators() | std::views::filter([&](const auto& gen) {
+                                                 return std::ranges::includes(
+                                                     p(Eigen::seq(0, degree)),
+                                                     gen.points()(Eigen::seq(0, degree - 1)));
+                                             }) | std::views::transform([](const auto& gen) {
+                                                 return gen.index();
+                                             }),
+                                             edges_range.begin());
 
-            return std::make_tuple(std::distance(edges_range.begin(), result), std::move(p), std::move(e));
+        return std::make_tuple(std::distance(edges_range.begin(), result), std::move(p), std::move(e));
     }
 
-    
-    // retrieves the group of `n`-chains if it has already been computed, or uses the `compute_skeleton` function of a derived class to compute it.
-    template <std::derived_from<point_cloud_complex> Self> constexpr chain_group<>& skeleton(this Self& self, int n) {
+    // retrieves the group of `n`-chains if it has already been computed, or uses the `compute_skeleton`
+    // function of a derived class to compute it.
+    template <std::derived_from<point_cloud_complex> Self>
+    constexpr chain_group<>& skeleton(this Self& self, int n) {
         if (n >= self.computed_skeleta()) {
             self.skeleta.emplace_back(std::make_unique<chain_group<>>(compute_skeleton(self, n)));
         }
         return *self.skeleta[n];
     }
 
-    constexpr auto computed_skeleta() const {
-        return skeleta.size();
-    }
+    constexpr auto computed_skeleta() const { return skeleta.size(); }
 };
 
 constexpr auto compute_skeleton(nerve_complex auto& cplx, int n) {
     if (n == 0) {
         // the 0-chains are just points
-        return chain_group<>{ 0,  std::views::iota(0, (int) cplx.n_points()) | std::views::transform([&](int i){
-            return simplex<>(i, std::array{ i }, std::array{ i });
-        }) }; 
+        return chain_group<>{ 0,
+                              std::views::iota(0, (int)cplx.n_points()) | std::views::transform([&](int i) {
+                                  return simplex<>(i, std::array{ i }, std::array{ i });
+                              }) };
     }
 
     // here, an edge refers to an `n-1`-chain from which we form faces (`n`-chains)
-    const chain_group<>& edges = cplx.skeleton(n-1);
-    std::vector<simplex<>> faces{ };
-    int added_faces{ };
+    const chain_group<>& edges = cplx.skeleton(n - 1);
+    std::vector<simplex<>> faces{};
+    int added_faces{};
 
     for (int edge_index = 0; edge_index < edges.rank(); ++edge_index) {
         auto& edge = edges.generators()[edge_index];
         auto vertices = cplx.points_of(edge);
         // std::println("edge {} matched to vertices {}", edge_index, vertices.matrix());
 
-        // the points in `edge` should be ordered, so we can begin searching for new points with which to form a face after
-        // all the already-included points. this should save time while also enforcing ordering.
-        for (int j = edge.points()[n-1] + 1; j < cplx.n_points(); ++j) {
+        // the points in `edge` should be ordered, so we can begin searching for new points with which to form
+        // a face after all the already-included points. this should save time while also enforcing ordering.
+        for (int j = edge.points()[n - 1] + 1; j < cplx.n_points(); ++j) {
             // std::println("checking for intersection with {}", j);
             Eigen::Array<int, Eigen::Dynamic, 1> p(n + 1);
             p(Eigen::seq(0, n - 1)) = edge.points();
@@ -291,10 +294,8 @@ constexpr auto compute_skeleton(nerve_complex auto& cplx, int n) {
             }
         }
     }
-    return chain_group<>{ (int) edges.rank(), std::move(faces) };
-
+    return chain_group<>{ (int)edges.rank(), std::move(faces) };
 }
-
 
 #endif
 

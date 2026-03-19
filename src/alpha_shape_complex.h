@@ -11,22 +11,27 @@ template <metric_space Space> struct alpha_shape_complex: point_cloud_complex<Sp
 
     Eigen::MatrixX<scalar_type> distances;
     Eigen::MatrixXi neighborhoods;
-    
-    template <class R> constexpr alpha_shape_complex(R&& points, scalar_type epsilon): point_cloud_complex<Space>{ std::forward<R>(points), epsilon } {
+
+    template <class R> constexpr alpha_shape_complex(R&& points, scalar_type epsilon)
+        : point_cloud_complex<Space>{ std::forward<R>(points), epsilon } {
 
         // precompute the pairwise distances of all the points
         distances.resize(this->n_points(), this->n_points());
         neighborhoods.setIdentity(this->n_points(), this->n_points());
         Eigen::Index idx;
         for (int i = 0; i < this->n_points(); ++i) {
-            distances(i, Eigen::placeholders::all) = (this->_points.rowwise() - this->_points(i, Eigen::placeholders::all)).rowwise().squaredNorm().transpose();
+            distances(i, Eigen::placeholders::all) = (this->_points.rowwise()
+                                                      - this->_points(i, Eigen::placeholders::all))
+                                                         .rowwise()
+                                                         .squaredNorm()
+                                                         .transpose();
             distances(i, i) = std::numeric_limits<scalar_type>::infinity();
             auto dist = distances(i, Eigen::placeholders::all).minCoeff(&idx);
             neighborhoods(idx, i) = dist < this->epsilon_squared();
         }
 
         // row `idx` of `neighborhoods` has a 1 for each point that is closest to point `idx`
-        // std::println("neighborhoods: {}", neighborhoods); 
+        // std::println("neighborhoods: {}", neighborhoods);
     }
 
     constexpr alpha_shape_complex(const alpha_shape_complex&) = delete;
@@ -34,11 +39,11 @@ template <metric_space Space> struct alpha_shape_complex: point_cloud_complex<Sp
 
     constexpr void scale(this auto& self, scalar_type epsilon) {
         static_cast<point_cloud_complex<Space>&>(self).scale(epsilon);
-        self.neighborhoods.setZero();
+        self.neighborhoods.setIdentity();
         Eigen::Index idx;
         for (int i = 0; i < self.n_points(); ++i) {
-             auto dist = self.distances(i, Eigen::placeholders::all).minCoeff(&idx);
-             self.neighborhoods(idx, i) = dist < self.epsilon_squared();
+            auto dist = self.distances(i, Eigen::placeholders::all).minCoeff(&idx);
+            self.neighborhoods(idx, i) = dist < self.epsilon_squared();
         }
     }
 

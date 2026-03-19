@@ -2,6 +2,7 @@
 #define PLOTTER_H
 
 #include <Eigen/Core>
+#include <print>
 #include "tty.h"
 
 template <int N> constexpr auto plot_points(double xscale, double yscale, const Eigen::Array<double, N, 2>& points) {

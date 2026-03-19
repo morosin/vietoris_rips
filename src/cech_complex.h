@@ -9,15 +9,16 @@ template <metric_space Space> struct cech_complex: point_cloud_complex<Space> {
     using point_type = point_cloud_complex<Space>::point_type;
     using scalar_type = point_cloud_complex<Space>::scalar_type;
 
-    template <class R> constexpr cech_complex(R&& points, scalar_type epsilon): point_cloud_complex<Space>{ std::forward<R>(points), epsilon } { }
-    
+    template <class R> constexpr cech_complex(R&& points, scalar_type epsilon)
+        : point_cloud_complex<Space>{ std::forward<R>(points), epsilon } { }
+
     constexpr cech_complex(const cech_complex&) = delete;
     constexpr cech_complex(cech_complex&&) = default;
 
     constexpr bool intersection(const Eigen::ArrayXi& points) const {
-        // calculate the distance from each point to the centroid of the hypothetical face. the centroid should have minimal 
-        // distance to each of the points, and would have to be in the `n`-fold intersection of balls centered at these points
-        // if such an intersection is nonempty.
+        // calculate the distance from each point to the centroid of the hypothetical face. the centroid
+        // should have minimal distance to each of the points, and would have to be in the `n`-fold
+        // intersection of balls centered at these points if such an intersection is nonempty.
 
         auto coords = this->_points(points, Eigen::placeholders::all);
         auto centroid = coords.colwise().mean();

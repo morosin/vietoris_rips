@@ -182,10 +182,10 @@ template <aspect_type... A> struct cursor: public element<cursor<A...>> {
     constexpr cursor(A&&... a): element<cursor<A...>>{ std::forward<A>(a)... } { }
 
     constexpr auto operator()(this auto& self, std::format_context& ctx) {
-        if constexpr (self.has($row) || self.has($col)) {
-            static_assert(self.has($row) && self.has($col),
-                          "absolute cursor position must specify both row and col");
+        if constexpr (self.has($row) && self.has($col)) {
             ctx.advance_to(std::format_to(ctx.out(), "{}[{};{}H", ESC, self[$row], self[$col]));
+        } else if constexpr (self.has($col)) {
+            ctx.advance_to(std::format_to(ctx.out(), "{}[{}G", ESC, self[$col]));
         }
 
         if constexpr (self.has($up)) { ctx.advance_to(std::format_to(ctx.out(), "{}[{}A", ESC, self[$up])); }
