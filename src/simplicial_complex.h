@@ -54,7 +54,7 @@ public:
                       const Eigen::ArrayBase<DerivedP>& points)
         : _index{ index }, _edges{ edges }, _points{ points } { }
 
-    constexpr auto dimension() const { return _edges.rows(); }
+    [[nodiscard]] constexpr auto dimension() const { return _edges.rows(); }
 
     constexpr explicit(false) operator storage_type&(this auto& self) { return self._edges; }
 
@@ -66,7 +66,7 @@ public:
     constexpr auto& operator[](this auto& self, std::size_t i) { return self._edges(i); }
 
     // the index of this simplex in its chain group
-    constexpr auto index() const { return _index; }
+    [[nodiscard]] constexpr auto index() const { return _index; }
 
     constexpr std::strong_ordering operator<=>(const simplex<>& rhs) const {
         return std::lexicographical_compare_three_way(
@@ -129,15 +129,15 @@ public:
     }
 
     // the rank of the chain group (as a ℤ-module)
-    constexpr auto rank() const { return _generators.size(); }
+    [[nodiscard]] constexpr auto rank() const { return _generators.size(); }
 
     // this is a group of `dimension()`-chains
-    constexpr auto dimension() const { return Deg; }
+    [[nodiscard]] constexpr auto dimension() const { return Deg; }
 
     // the set of simplices that generate the group
-    constexpr const auto& generators() const { return _generators; }
+    [[nodiscard]] constexpr const auto& generators() const { return _generators; }
 
-    constexpr const Eigen::SparseMatrix<int>& boundary() const { return _boundary; }
+    [[nodiscard]] constexpr const Eigen::SparseMatrix<int>& boundary() const { return _boundary; }
 
     constexpr auto& boundary_image() {
         check_boundary_computations();

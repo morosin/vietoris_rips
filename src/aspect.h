@@ -1,6 +1,7 @@
 #ifndef ASPECT_H
 #define ASPECT_H
 
+#include <functional>
 #include <meta>
 #include "static_string.h"
 
@@ -13,7 +14,7 @@ template <class T, class Gen> struct aspect {
     [[clang::always_inline]] constexpr aspect(const aspect& other) requires std::copy_constructible<T> = default;
     [[clang::always_inline]] constexpr aspect(aspect&& other) noexcept requires std::move_constructible<T>: value{ std::move(other.value) } { }
 
-    [[clang::always_inline]] constexpr auto operator=(const aspect& other) { 
+    [[clang::always_inline]] [[=int{ 5 } ]] constexpr auto operator=(const aspect& other) { 
         this->value = other.value;
     }
 
@@ -34,7 +35,7 @@ template <class T, class Gen> struct aspect {
 
 template <std::meta::info VTp, static_string Name> struct aspect_generator { 
     template <class ...Args> [[clang::always_inline]] constexpr auto operator()(Args&& ...args) const {
-        [:VTp:] r{ std::forward<Args>(args)... };
+        typename[:VTp:] r{ std::forward<Args>(args)... };
         return aspect<decltype(r), aspect_generator>{ std::move(r) };
     }
 

@@ -27,9 +27,9 @@ template <simplicial_complex Cplx> class barcode {
 
 public:
     constexpr barcode(Cplx& cplx, scale_type stop_epsilon, scale_type step_epsilon)
-        : _max_epsilon{ stop_epsilon } {
+        : _min_epsilon{ cplx.epsilon() }, _max_epsilon{ stop_epsilon } {
         std::set<simplex<>> active_simplices;
-        this->_min_epsilon = cplx.epsilon();
+        
         for (scale_type epsilon = cplx.epsilon(); epsilon < stop_epsilon + step_epsilon;
              epsilon += step_epsilon)
         {
