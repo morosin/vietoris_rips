@@ -6,7 +6,7 @@
 #include <print>
 
 template <int N>
-constexpr auto plot_points(double xscale, double yscale, const Eigen::Array<double, N, 2>& points) {
+constexpr void plot_points(double xscale, double yscale, const Eigen::Array<double, N, 2>& points) {
     using namespace tty;
 
     std::print("\n{}", cursor{ $forward = 32 });

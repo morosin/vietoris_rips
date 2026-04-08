@@ -47,9 +47,10 @@ template <eigen_formattable Derived> struct std::formatter<Derived> {
         }
 
         const int w = coeff_width(m);
-        const int total_width = total_inner_width(m);
+        const int total_width = total_inner_width(m) + 4;
+        int i{ };
 
-        auto left_border = [&, i = 0]() mutable {
+        auto left_border = [&]() {
             if (i == 0) {
                 ctx.advance_to(std::format_to(ctx.out(), "▕🭽"));
             } else if (i == m.rows() - 1) {
@@ -57,20 +58,18 @@ template <eigen_formattable Derived> struct std::formatter<Derived> {
             } else {
                 ctx.advance_to(std::format_to(ctx.out(), "▕▏"));
             }
-            ++i;
         };
 
-        auto right_border = [&, i = 0]() mutable {
+        auto right_border = [&]() {
             if (i == 0) {
                 ctx.advance_to(std::format_to(ctx.out(), "🭾▏\f"));
-                ctx.advance_to(std::format_to(ctx.out(), "{}", cursor{ $back = total_width + 4 }));
+                ctx.advance_to(std::format_to(ctx.out(), "{}", cursor{ $back = total_width }));
             } else if (i == m.rows() - 1) {
                 ctx.advance_to(std::format_to(ctx.out(), "🭿▏"));
             } else {
                 ctx.advance_to(std::format_to(ctx.out(), "▕▏\f"));
-                ctx.advance_to(std::format_to(ctx.out(), "{}", cursor{ $back = total_width + 4 }));
+                ctx.advance_to(std::format_to(ctx.out(), "{}", cursor{ $back = total_width }));
             }
-            ++i;
         };
 
         if (m.rows() > 1) {
@@ -78,6 +77,7 @@ template <eigen_formattable Derived> struct std::formatter<Derived> {
                 left_border();
                 for (auto x : row) { print_number(x, w, ctx); }
                 right_border();
+                ++i;
             }
         } else {
             ctx.advance_to(std::format_to(ctx.out(), "▕🮀"));

@@ -35,15 +35,19 @@ template <class... A> struct with_aspects_impl {
         std::vector<std::meta::info> mems;
         std::vector<std::meta::info> child_types;
 
-        template for (constexpr auto I : std::make_index_sequence<sizeof...(A)>{}) {
-            constexpr auto a = ^^A...[I];
+        // this was originally an expansion statement but it causes a crash in clangd that i don't understand so we're
+        // back to doing it this way.
+        [&]<std::size_t ...Is>(std::index_sequence<Is...>){
+            ([&]<std::size_t I, class T>(){
+                constexpr auto a = ^^T;
 
-            if constexpr (is_aspect_type(a)) {
-                mems.push_back(std::meta::data_member_spec(a, { .name = aspect_name<typename[:a:]> }));
-            } else {
-                child_types.push_back(std::meta::data_member_spec(a, { .name = child_name<I, a>() }));
-            }
-        }
+                if constexpr (is_aspect_type(a)) {
+                    mems.push_back(std::meta::data_member_spec(a, { .name = aspect_name<typename[:a:]> }));
+                } else if constexpr (is_type(a)) {
+                    child_types.push_back(std::meta::data_member_spec(a, { .name = child_name<I, a>() }));
+                }
+            }.template operator()<Is, A>(), ...);
+        }(std::make_index_sequence<sizeof...(A)>{ });
 
         define_aggregate(^^aspects_impl, mems);
         define_aggregate(^^children_impl, child_types);
@@ -67,7 +71,7 @@ template <template <class...> class El, class... A> class element<El<A...>>: pub
         v.push_back(dealias(type));
     }
 
-    template <class B = el_type> static consteval auto aspect_storage_types() {
+    template <class B = el_type> static consteval decltype(auto) aspect_storage_types() {
         std::vector<std::meta::info> v{};
         traverse_bases(dealias(^^B), v);
         return define_static_array(v);
@@ -96,8 +100,10 @@ template <template <class...> class El, class... A> class element<El<A...>>: pub
     static consteval auto children_in() {
         constexpr auto ctx = std::meta::access_context::unchecked();
         std::vector<std::meta::info> c;
+
         constexpr auto bases = aspect_storage_types<el_type>();
-        template for (constexpr std::meta::info base : bases) {
+
+        template for (constexpr std::meta::info base : aspect_storage_types<el_type>()) {
             constexpr auto mems = define_static_array(nonstatic_data_members_of(base, ctx));
             template for (constexpr auto mem : mems) {
                 if constexpr (!is_aspect_type(type_of(mem))) { c.push_back(mem); }

@@ -179,7 +179,7 @@ inline constexpr aspect_generator<^^erase_kind, "erase_line"> $erase_line;
 template <aspect_type... A> struct cursor: public element<cursor<A...>> {
     constexpr cursor() = default;
 
-    constexpr cursor(A&&... a): element<cursor<A...>>{ std::forward<A>(a)... } { }
+    constexpr cursor(A... a): element<cursor<A...>>{ std::move(a)... } { }
 
     constexpr auto operator()(this auto& self, std::format_context& ctx) {
         if constexpr (self.has($row) && self.has($col)) {
@@ -213,6 +213,7 @@ template <aspect_type... A> struct cursor: public element<cursor<A...>> {
             ctx.advance_to(
                 std::format_to(ctx.out(), "{}[{}K", ESC, 2 - static_cast<unsigned int>(self[$erase_line])));
         }
+        return ctx.out();
     }
 };
 
@@ -308,10 +309,15 @@ template <std::output_iterator<char> It> constexpr auto strip_copy(const std::st
     }
     return out;
 }
-template <class T> struct tty_formatter;
 
-template <class ...A> struct tty_formatter<text<A...>> {
-    constexpr auto format(const text<A...>& text, std::format_context& ctx) const {
+}
+
+template <class ...A> struct std::formatter<tty::text<A...>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    constexpr auto format(const tty::text<A...>& text, std::format_context& ctx) const {
         template for (const auto& c : text.children()) {
             text.format_prefix(ctx);
             ctx.advance_to(std::format_to(ctx.out(), "{}", c));
@@ -321,19 +327,27 @@ template <class ...A> struct tty_formatter<text<A...>> {
     }
 };
 
-template <std::derived_from<dec_private_mode> T> struct tty_formatter<T> {
-    constexpr auto format(const decset& mode, std::format_context& ctx) const {
-        if constexpr (std::same_as<T, decset>) {
-            ctx.advance_to(std::format_to(ctx.out(), "{}[?{}h", ESC, mode.Ps));
-        } else if constexpr (std::same_as<T, decrst>) {
-            ctx.advance_to(std::format_to(ctx.out(), "{}[?{}l", ESC, mode.Ps));
+template <std::derived_from<tty::dec_private_mode> T> struct std::formatter<T> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    constexpr auto format(const tty::decset& mode, std::format_context& ctx) const {
+        if constexpr (std::same_as<T, tty::decset>) {
+            ctx.advance_to(std::format_to(ctx.out(), "{}[?{}h", tty::ESC, mode.Ps));
+        } else if constexpr (std::same_as<T, tty::decrst>) {
+            ctx.advance_to(std::format_to(ctx.out(), "{}[?{}l", tty::ESC, mode.Ps));
         }
         return ctx.out();
     }
 };
 
-template <> struct tty_formatter<xtwinops> {
-    constexpr auto format(const xtwinops& hint, std::format_context& ctx) const {
+template <> struct std::formatter<tty::xtwinops> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+
+    constexpr auto format(const tty::xtwinops& hint, std::format_context& ctx) const {
         ctx.advance_to(std::format_to(ctx.out(), "{}[{}", tty::ESC, hint.Ps[0]));
         if (hint.Ps[1] != 0) {
             ctx.advance_to(std::format_to(ctx.out(), ";{}", hint.Ps[1]));
@@ -346,29 +360,17 @@ template <> struct tty_formatter<xtwinops> {
     }
 };
 
-template <class T, class Gen> struct tty_formatter<aspect<T, Gen>> {
-    constexpr auto format(const aspect<T, Gen>& aspect, std::format_context& ctx) const {
-        ctx.advance_to(std::format_to(ctx.out(), "${} = {}{}", text{ aspect.name(), $fg = 1 }, aspect.value, text{ ": "sv, display_string_of(^^T), $fg = 250 }));
-        return ctx.out(); 
-    }
-};
-
-template <class T> concept tty_formattable = requires (const T& t, std::format_context& ctx) {
-    { tty_formatter<T>{ }.format(t, ctx) } -> std::convertible_to<decltype(ctx.out())>;
-};
-
-}
-
-template <class ...A> struct std::formatter<tty::text<A...>> {
-    tty::tty_formatter<tty::text<A...>> f;
+template <class T, class Gen> struct std::formatter<aspect<T, Gen>> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 
-    constexpr auto format(const tty::text<A...>& t, std::format_context& ctx) const {
-        return f.format(t, ctx);
-    }
+    constexpr auto format(const aspect<T, Gen>& aspect, std::format_context& ctx) const {
+        using namespace tty;
 
+        ctx.advance_to(std::format_to(ctx.out(), "${} = {}{}", text{ aspect.name(), $fg = 1 }, aspect.value, text{ ": "sv, display_string_of(^^T), $fg = 250 }));
+        return ctx.out(); 
+    }
 };
 
 template <class ...A> struct std::formatter<tty::cursor<A...>> {
@@ -393,18 +395,6 @@ template <class ...A> struct std::formatter<tty::scroll<A...>> {
         return ctx.out();
     }
 
-};
-
-
-template <tty::tty_formattable T> struct std::formatter<T> {
-    tty::tty_formatter<T> f;
-    constexpr auto parse(std::format_parse_context& ctx) {
-        return ctx.begin();
-    }
-
-    constexpr auto format(const T& t, std::format_context& ctx) const {
-        return f.format(t, ctx);
-    }
 };
 
 #endif

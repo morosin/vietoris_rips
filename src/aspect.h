@@ -34,12 +34,13 @@ template <class T, class Gen> struct aspect {
 };
 
 template <std::meta::info VTp, static_string Name> struct aspect_generator { 
-    template <class ...Args> [[clang::always_inline]] constexpr auto operator()(Args&& ...args) const {
-        typename[:VTp:] r{ std::forward<Args>(args)... };
+    template <class ...Args> [[clang::always_inline]] constexpr decltype(auto) operator()(Args&& ...args) const {
+        // this fails to compile with gcc 16, see gcc.gnu.org/bugzilla/show_bug.cgi?id=124706
+        [:VTp:] r{ std::forward<Args>(args)... };
         return aspect<decltype(r), aspect_generator>{ std::move(r) };
     }
 
-    template <class T> [[clang::always_inline]] constexpr auto operator=(T&& t) const {
+    template <class T> [[clang::always_inline]] constexpr decltype(auto) operator=(T&& t) const {
         return this->operator()(std::forward<T>(t));
     }
 
